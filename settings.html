@@ -1,0 +1,143 @@
+<div class="impersonator_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b><i class="fa-solid fa-user-pen"></i> <span data-i18n="Impersonator">Impersonator</span></b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div class="imp--header">
+                <div class="imp--description">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span data-i18n="Configure a custom prompt specifically for generating {{user}} messages, separate from the main API prompt used for {{char}} responses.">
+                        Configure a custom prompt specifically for generating {{user}} messages, separate from the main API prompt used for {{char}} responses.
+                    </span>
+                </div>
+                
+                <div class="imp--enable-section">
+                    <label class="checkbox_label imp--enable-label" for="impersonator_enabled">
+                        <input id="impersonator_enabled" type="checkbox" class="checkbox">
+                        <span data-i18n="Enable Custom Impersonation">Enable Custom Impersonation</span>
+                    </label>
+                    <div class="imp--status" id="impersonator_status">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span data-i18n="Active">Active</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="impersonator_config" class="imp--config">
+                <!-- Prompt Configuration -->
+                <div class="imp--section">
+                    <h4 class="imp--section-title">
+                        <i class="fa-solid fa-message-code"></i>
+                        <span data-i18n="Prompt Configuration">Prompt Configuration</span>
+                    </h4>
+                    
+                    <label for="impersonator_system_prompt" class="imp--label">
+                        <span data-i18n="System Prompt">System Prompt</span>
+                        <i class="fa-solid fa-circle-question imp--help" title="The system instruction that guides how {{user}} messages should be generated. Use {{char}} and {{user}} macros."></i>
+                    </label>
+                    <textarea id="impersonator_system_prompt" class="text_pole textarea_compact autoSetHeight imp--textarea" rows="4" placeholder="You are roleplaying as {{user}}. Continue the conversation naturally based on the context..."></textarea>
+                    
+                    <label for="impersonator_instruction" class="imp--label marginTop10">
+                        <span data-i18n="Additional Instructions">Additional Instructions</span>
+                        <i class="fa-solid fa-circle-question imp--help" title="Optional extra guidance for the impersonation (e.g., tone, style, specific behaviors)."></i>
+                    </label>
+                    <textarea id="impersonator_instruction" class="text_pole textarea_compact autoSetHeight imp--textarea" rows="2" placeholder="Be concise and stay in character..."></textarea>
+                </div>
+
+                <!-- Context Settings -->
+                <div class="imp--section">
+                    <h4 class="imp--section-title">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span data-i18n="Context Settings">Context Settings</span>
+                    </h4>
+                    
+                    <div class="imp--slider-group">
+                        <label for="impersonator_context_size" class="imp--label">
+                            <span data-i18n="Context Messages">Context Messages</span>
+                            <i class="fa-solid fa-circle-question imp--help" title="Number of recent messages to include as context for impersonation."></i>
+                        </label>
+                        <div class="imp--slider-container">
+                            <input id="impersonator_context_size" type="range" min="1" max="50" step="1" value="10" class="imp--slider">
+                            <div class="imp--slider-value" id="impersonator_context_size_value">10</div>
+                        </div>
+                    </div>
+
+                    <div class="imp--slider-group">
+                        <label for="impersonator_max_tokens" class="imp--label">
+                            <span data-i18n="Max Response Length">Max Response Length</span>
+                            <i class="fa-solid fa-circle-question imp--help" title="Maximum tokens for the impersonated response. 0 = use default."></i>
+                        </label>
+                        <div class="imp--slider-container">
+                            <input id="impersonator_max_tokens" type="range" min="0" max="1000" step="50" value="200" class="imp--slider">
+                            <div class="imp--slider-value" id="impersonator_max_tokens_value">200</div>
+                        </div>
+                    </div>
+
+                    <div class="imp--checkboxes">
+                        <label class="checkbox_label imp--checkbox" for="impersonator_include_char_card">
+                            <input id="impersonator_include_char_card" type="checkbox" class="checkbox">
+                            <i class="fa-solid fa-id-card"></i>
+                            <span data-i18n="Include Character Card">Include Character Card</span>
+                        </label>
+
+                        <label class="checkbox_label imp--checkbox" for="impersonator_include_persona">
+                            <input id="impersonator_include_persona" type="checkbox" class="checkbox">
+                            <i class="fa-solid fa-user"></i>
+                            <span data-i18n="Include User Persona">Include User Persona</span>
+                        </label>
+
+                        <label class="checkbox_label imp--checkbox" for="impersonator_include_wi">
+                            <input id="impersonator_include_wi" type="checkbox" class="checkbox">
+                            <i class="fa-solid fa-book"></i>
+                            <span data-i18n="Include World Info">Include World Info</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Presets -->
+                <div class="imp--section">
+                    <h4 class="imp--section-title">
+                        <i class="fa-solid fa-palette"></i>
+                        <span data-i18n="Quick Presets">Quick Presets</span>
+                    </h4>
+                    <div class="imp--presets">
+                        <button id="impersonator_preset_default" class="imp--preset-btn" title="Load default impersonation settings">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span data-i18n="Default">Default</span>
+                        </button>
+                        <button id="impersonator_preset_concise" class="imp--preset-btn" title="Short, to-the-point responses">
+                            <i class="fa-solid fa-compress"></i>
+                            <span data-i18n="Concise">Concise</span>
+                        </button>
+                        <button id="impersonator_preset_detailed" class="imp--preset-btn" title="Longer, more detailed responses">
+                            <i class="fa-solid fa-expand"></i>
+                            <span data-i18n="Detailed">Detailed</span>
+                        </button>
+                        <button id="impersonator_preset_creative" class="imp--preset-btn" title="Creative and expressive responses">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span data-i18n="Creative">Creative</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="imp--actions">
+                    <button id="impersonator_test" class="imp--action-btn imp--test" title="Test the impersonation with current settings">
+                        <i class="fa-solid fa-flask"></i>
+                        <span data-i18n="Test Impersonation">Test Impersonation</span>
+                    </button>
+                    <button id="impersonator_export" class="imp--action-btn imp--export" title="Export current settings">
+                        <i class="fa-solid fa-file-export"></i>
+                        <span data-i18n="Export">Export</span>
+                    </button>
+                    <button id="impersonator_import" class="imp--action-btn imp--import" title="Import settings">
+                        <i class="fa-solid fa-file-import"></i>
+                        <span data-i18n="Import">Import</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,12 @@
+{
+    "display_name": "Impersonator",
+    "loading_order": 15,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "melumin",
+    "version": "1.0.0",
+    "homePage": "https://github.com/melumin/impersonator",
+    "description": "Custom impersonation prompt for {{user}} messages with configurable presets and context settings"
+}
