@@ -1,4 +1,5 @@
-import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types } from '../../../script.js';
+import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2 } from '../../../script.js';
+import { power_user } from '../../power-user.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
@@ -13,89 +14,43 @@ const warn = (...args) => console.warn('[Impersonator]', ...args);
 const error = (...args) => console.error('[Impersonator]', ...args);
 
 const defaultPreset = {
-    name: 'Default',
-    systemPrompt: 'You are roleplaying as {{user}}. Based on the conversation context and {{user}}\'s personality, continue the dialogue naturally. Stay in character and respond as {{user}} would.',
-    contextSize: 10,
-    maxTokens: 200,
-    instruction: '',
+    name: 'Comprehensive',
+    systemPrompt: `You are {{user}}. Your task is to generate the next message from {{user}}'s perspective in an ongoing roleplay conversation.
+
+CRITICAL INSTRUCTIONS:
+1. You MUST roleplay as {{user}}, not as {{char}} or any other character
+2. Generate ONLY {{user}}'s next response - do not continue the conversation beyond that
+3. Stay completely in character based on {{user}}'s personality, background, and established traits
+4. Match the tone, style, and energy level of {{user}}'s previous messages
+5. Consider the full context of the conversation and respond appropriately to what {{char}} just said/did
+6. Do not narrate {{char}}'s actions, thoughts, or dialogue - focus solely on {{user}}
+
+WRITING STYLE:
+- Point of View: {{pov}}
+- Response Length: {{length}}
+- Maintain consistency with {{user}}'s established personality, speech patterns, and behavior
+- React naturally to the current situation and {{char}}'s most recent message
+- Include both dialogue and actions/descriptions as appropriate for the scene
+- Show {{user}}'s thoughts, feelings, and internal reactions when relevant
+- Keep the narrative flowing - don't break character or add meta-commentary
+- Respect the established relationship dynamic between {{user}} and {{char}}
+
+Remember: You are continuing an existing story. Read the context carefully and generate a response that feels natural and authentic to {{user}}'s character.`,
+    contextSize: 15,
+    maxTokens: 300,
     includeCharCard: false,
     includePersona: true,
-    pov: 'first', // first, second, third
-    responseStyle: 'medium', // short, medium, long, adaptive
+    pov: 'first',
+    responseStyle: 'medium',
 };
 
 const builtInPresets = {
-    'Default': {
-        name: 'Default',
-        systemPrompt: 'You are {{user}}. Continue the conversation naturally based on the context and your personality. Stay in character.',
-        contextSize: 10,
-        maxTokens: 200,
-        instruction: 'Write in first person perspective. Match the conversation style.',
-        includeCharCard: false,
-        includePersona: true,
-        pov: 'first',
-        responseStyle: 'medium',
-    },
-    'First Person Short': {
-        name: 'First Person Short',
-        systemPrompt: 'You are {{user}}. Reply briefly in first person, staying in character.',
-        contextSize: 5,
-        maxTokens: 100,
-        instruction: 'Use "I" perspective. Keep responses to 1-2 sentences. Be direct and immediate.',
-        includeCharCard: false,
-        includePersona: true,
-        pov: 'first',
-        responseStyle: 'short',
-    },
-    'First Person Detailed': {
-        name: 'First Person Detailed',
-        systemPrompt: 'You are {{user}}. Provide detailed first-person responses that reflect your personality, thoughts, and emotions.',
-        contextSize: 15,
-        maxTokens: 400,
-        instruction: 'Use "I" perspective. Include internal thoughts and feelings. Be descriptive and expressive.',
-        includeCharCard: false,
-        includePersona: true,
-        pov: 'first',
-        responseStyle: 'long',
-    },
-    'Second Person': {
-        name: 'Second Person',
-        systemPrompt: 'Narrate {{user}}\'s actions and responses in second person perspective.',
-        contextSize: 10,
-        maxTokens: 250,
-        instruction: 'Use "You" perspective. Describe actions and dialogue as if narrating to the reader.',
-        includeCharCard: false,
-        includePersona: true,
-        pov: 'second',
-        responseStyle: 'medium',
-    },
-    'Third Person': {
-        name: 'Third Person',
-        systemPrompt: 'Narrate {{user}}\'s actions and responses in third person perspective.',
-        contextSize: 10,
-        maxTokens: 250,
-        instruction: 'Use "{{user}}" or appropriate pronouns. Describe actions and dialogue from an outside perspective.',
-        includeCharCard: false,
-        includePersona: true,
-        pov: 'third',
-        responseStyle: 'medium',
-    },
-    'Adaptive Context': {
-        name: 'Adaptive Context',
-        systemPrompt: 'You are {{user}}. Analyze the recent conversation and match the style, length, and tone of previous {{user}} messages.',
-        contextSize: 20,
-        maxTokens: 300,
-        instruction: 'Adapt to the conversation style. If previous messages were short, be brief. If detailed, be expressive. Match the established pattern.',
-        includeCharCard: false,
-        includePersona: true,
-        pov: 'first',
-        responseStyle: 'adaptive',
-    },
+    'Comprehensive': defaultPreset,
 };
 
 const defaultSettings = {
     enabled: false,
-    activePreset: 'Default',
+    activePreset: 'Comprehensive',
     presets: { ...builtInPresets },
     currentSettings: { ...defaultPreset },
 };
@@ -131,7 +86,7 @@ function loadSettings() {
 
     // Ensure activePreset is valid
     if (!settings.activePreset || !settings.presets[settings.activePreset]) {
-        settings.activePreset = 'Default';
+        settings.activePreset = 'Comprehensive';
     }
 
     // Load current settings from active preset
@@ -165,11 +120,10 @@ function loadCurrentPreset() {
     const current = settings.currentSettings;
     
     $('#impersonator_system_prompt').val(current.systemPrompt || '');
-    $('#impersonator_context_size').val(current.contextSize || 10);
-    $('#impersonator_context_size_value').text(current.contextSize || 10);
-    $('#impersonator_max_tokens').val(current.maxTokens || 200);
-    $('#impersonator_max_tokens_value').text(current.maxTokens || 200);
-    $('#impersonator_instruction').val(current.instruction || '');
+    $('#impersonator_context_size').val(current.contextSize || 15);
+    $('#impersonator_context_size_value').text(current.contextSize || 15);
+    $('#impersonator_max_tokens').val(current.maxTokens || 300);
+    $('#impersonator_max_tokens_value').text(current.maxTokens || 300);
     $('#impersonator_include_char_card').prop('checked', current.includeCharCard === true);
     $('#impersonator_include_persona').prop('checked', current.includePersona !== false);
     $('#impersonator_pov').val(current.pov || 'first');
@@ -205,14 +159,55 @@ async function buildImpersonationPrompt() {
         return null;
     }
 
-    let systemPrompt = substituteParamsExtended(current.systemPrompt);
+    // Get POV text
+    let povText = '';
+    switch (current.pov) {
+        case 'first':
+            povText = 'Write in FIRST PERSON using "I", "me", "my"';
+            break;
+        case 'second':
+            povText = 'Write in SECOND PERSON using "You", "your"';
+            break;
+        case 'third':
+            povText = `Write in THIRD PERSON using "${name2 || '{{user}}'}" or appropriate pronouns`;
+            break;
+    }
     
-    // Add user persona FIRST if enabled (prioritize persona)
+    // Get length text
+    let lengthText = '';
+    switch (current.responseStyle) {
+        case 'short':
+            lengthText = 'Keep responses BRIEF (1-3 sentences). Be direct and concise.';
+            break;
+        case 'medium':
+            lengthText = 'Provide MODERATE length responses (2-4 paragraphs). Balance action and dialogue.';
+            break;
+        case 'long':
+            lengthText = 'Provide DETAILED responses (4+ paragraphs). Include internal thoughts, feelings, and rich descriptions.';
+            break;
+        case 'adaptive':
+            lengthText = 'MATCH the length and style of previous {{user}} messages. Adapt to the established conversation pattern.';
+            break;
+    }
+
+    // Start with the base system prompt and replace variables
+    let systemPrompt = current.systemPrompt
+        .replace(/\{\{pov\}\}/g, povText)
+        .replace(/\{\{length\}\}/g, lengthText);
+    
+    // Apply standard macro substitution
+    systemPrompt = substituteParamsExtended(systemPrompt);
+    
+    // Add user persona if enabled
     if (current.includePersona !== false) {
-        const persona = context.persona || '';
-        if (persona) {
-            systemPrompt += `\n\n### Your Persona ({{user}}):\n${persona}`;
-            log('Added user persona to prompt');
+        const personaDescription = power_user?.persona_description || '';
+        const userName = name2 || context.name1 || 'User';
+        
+        if (personaDescription && personaDescription.trim()) {
+            systemPrompt += `\n\n### {{user}}'s Character Profile:\nName: ${userName}\n${personaDescription}`;
+            log('Added user persona to prompt:', personaDescription.substring(0, 100) + '...');
+        } else {
+            log('No persona description found');
         }
     }
 
@@ -220,50 +215,9 @@ async function buildImpersonationPrompt() {
     if (current.includeCharCard === true && context.characterId !== undefined) {
         const charData = context.characters[context.characterId];
         if (charData && charData.description) {
-            systemPrompt += `\n\n### Character Information ({{char}}):\n${charData.description}`;
+            systemPrompt += `\n\n### {{char}}'s Character Profile:\n${charData.description}`;
             log('Added character card to prompt');
         }
-    }
-
-    // Add additional instructions based on POV and response style
-    let styleInstructions = '';
-    
-    // POV instructions
-    switch (current.pov) {
-        case 'first':
-            styleInstructions += 'Write in first person perspective using "I". ';
-            break;
-        case 'second':
-            styleInstructions += 'Write in second person perspective using "You". ';
-            break;
-        case 'third':
-            styleInstructions += `Write in third person perspective using "{{user}}" or appropriate pronouns. `;
-            break;
-    }
-    
-    // Response style instructions
-    switch (current.responseStyle) {
-        case 'short':
-            styleInstructions += 'Keep responses brief and concise (1-2 sentences). ';
-            break;
-        case 'medium':
-            styleInstructions += 'Provide moderate length responses. ';
-            break;
-        case 'long':
-            styleInstructions += 'Provide detailed, expressive responses with internal thoughts. ';
-            break;
-        case 'adaptive':
-            styleInstructions += 'Match the length and style of previous {{user}} messages in the conversation. ';
-            break;
-    }
-    
-    // Add custom instructions
-    if (current.instruction) {
-        styleInstructions += substituteParamsExtended(current.instruction);
-    }
-    
-    if (styleInstructions) {
-        systemPrompt += `\n\n### Style Instructions:\n${styleInstructions}`;
     }
 
     // Build context from recent messages
@@ -272,12 +226,17 @@ async function buildImpersonationPrompt() {
     
     const contextMessages = recentMessages
         .filter(msg => !msg.is_system && msg.mes)
-        .map(msg => `${msg.name}: ${msg.mes}`)
+        .map(msg => {
+            const speaker = msg.is_user ? (name2 || '{{user}}') : msg.name;
+            return `${speaker}: ${msg.mes}`;
+        })
         .join('\n\n');
 
-    const userPrompt = `### Recent Conversation:\n\n${contextMessages}\n\n${context.name1}:`;
+    const userPrompt = `### Recent Conversation:\n\n${contextMessages}\n\n${name2 || '{{user}}'}:`;
 
-    log('Built impersonation prompt with', contextSize, 'messages, POV:', current.pov, 'Style:', current.responseStyle);
+    log('Built impersonation prompt - Context:', contextSize, 'messages | POV:', current.pov, '| Style:', current.responseStyle);
+    log('Persona included:', current.includePersona, '| Char card included:', current.includeCharCard);
+    
     return { systemPrompt, userPrompt };
 }
 
@@ -405,7 +364,6 @@ function saveCurrentToPreset() {
         systemPrompt: $('#impersonator_system_prompt').val(),
         contextSize: Number($('#impersonator_context_size').val()),
         maxTokens: Number($('#impersonator_max_tokens').val()),
-        instruction: $('#impersonator_instruction').val(),
         includeCharCard: $('#impersonator_include_char_card').prop('checked'),
         includePersona: $('#impersonator_include_persona').prop('checked'),
         pov: $('#impersonator_pov').val() || 'first',
@@ -443,9 +401,8 @@ function createNewPreset() {
     settings.presets[name] = {
         name: name,
         systemPrompt: $('#impersonator_system_prompt').val() || defaultPreset.systemPrompt,
-        contextSize: Number($('#impersonator_context_size').val()) || 10,
-        maxTokens: Number($('#impersonator_max_tokens').val()) || 200,
-        instruction: $('#impersonator_instruction').val() || '',
+        contextSize: Number($('#impersonator_context_size').val()) || 15,
+        maxTokens: Number($('#impersonator_max_tokens').val()) || 300,
         includeCharCard: $('#impersonator_include_char_card').prop('checked'),
         includePersona: $('#impersonator_include_persona').prop('checked'),
         pov: $('#impersonator_pov').val() || 'first',
@@ -644,10 +601,6 @@ jQuery(async function () {
         const value = $(this).val();
         settings.currentSettings.maxTokens = Number(value);
         $('#impersonator_max_tokens_value').text(value);
-    });
-
-    $('#impersonator_instruction').on('input', function () {
-        settings.currentSettings.instruction = $(this).val();
     });
 
     $('#impersonator_include_char_card').on('change', function () {
