@@ -1,5 +1,4 @@
 import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2 } from '../../../script.js';
-import { power_user } from '../../power-user.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
@@ -169,7 +168,7 @@ async function buildImpersonationPrompt() {
             povText = 'Write in SECOND PERSON using "You", "your"';
             break;
         case 'third':
-            povText = `Write in THIRD PERSON using "${name2 || '{{user}}'}" or appropriate pronouns`;
+            povText = `Write in THIRD PERSON using "{{user}}" or appropriate pronouns`;
             break;
     }
     
@@ -190,35 +189,25 @@ async function buildImpersonationPrompt() {
             break;
     }
 
-    // Start with the base system prompt and replace variables
+    // Start with the base system prompt and replace custom variables
     let systemPrompt = current.systemPrompt
         .replace(/\{\{pov\}\}/g, povText)
         .replace(/\{\{length\}\}/g, lengthText);
     
-    // Apply standard macro substitution
-    systemPrompt = substituteParamsExtended(systemPrompt);
-    
-    // Add user persona if enabled
+    // Add user persona if enabled (BEFORE applying macro substitution so {{persona}} works)
     if (current.includePersona !== false) {
-        const personaDescription = power_user?.persona_description || '';
-        const userName = name2 || context.name1 || 'User';
-        
-        if (personaDescription && personaDescription.trim()) {
-            systemPrompt += `\n\n### {{user}}'s Character Profile:\nName: ${userName}\n${personaDescription}`;
-            log('Added user persona to prompt:', personaDescription.substring(0, 100) + '...');
-        } else {
-            log('No persona description found');
-        }
+        systemPrompt += `\n\n### {{user}}'s Character Profile:\n{{persona}}`;
+        log('Added persona macro to prompt');
     }
 
-    // Add character card ONLY if explicitly enabled
-    if (current.includeCharCard === true && context.characterId !== undefined) {
-        const charData = context.characters[context.characterId];
-        if (charData && charData.description) {
-            systemPrompt += `\n\n### {{char}}'s Character Profile:\n${charData.description}`;
-            log('Added character card to prompt');
-        }
+    // Add character card if enabled (for context about who they're talking to)
+    if (current.includeCharCard === true) {
+        systemPrompt += `\n\n### {{char}}'s Character Profile (for context):\n{{description}}`;
+        log('Added character description macro to prompt');
     }
+    
+    // Now apply standard macro substitution to replace all {{macros}}
+    systemPrompt = substituteParamsExtended(systemPrompt);
 
     // Build context from recent messages
     const contextSize = Math.min(current.contextSize, chat.length);
@@ -227,12 +216,25 @@ async function buildImpersonationPrompt() {
     const contextMessages = recentMessages
         .filter(msg => !msg.is_system && msg.mes)
         .map(msg => {
-            const speaker = msg.is_user ? (name2 || '{{user}}') : msg.name;
+            const speaker = msg.is_user ? (name2 || context.name1 || 'User') : msg.name;
             return `${speaker}: ${msg.mes}`;
         })
         .join('\n\n');
 
-    const userPrompt = `### Recent Conversation:\n\n${contextMessages}\n\n${name2 || '{{user}}'}:`;
+    // Check if there's text in the input box
+    const inputText = $('#send_textarea').val()?.trim() || '';
+    let userPrompt = `### Recent Conversation:\n\n${contextMessages}`;
+    
+    if (inputText) {
+        // If there's input text, treat it as a note/idea for the message
+        userPrompt += `\n\n### Message Idea/Note:\n${inputText}\n\n{{user}}:`;
+        log('Including input text as message idea:', inputText.substring(0, 50) + '...');
+    } else {
+        userPrompt += `\n\n{{user}}:`;
+    }
+    
+    // Apply macro substitution to user prompt as well
+    userPrompt = substituteParamsExtended(userPrompt);
 
     log('Built impersonation prompt - Context:', contextSize, 'messages | POV:', current.pov, '| Style:', current.responseStyle);
     log('Persona included:', current.includePersona, '| Char card included:', current.includeCharCard);
@@ -261,11 +263,13 @@ async function doImpersonate() {
     try {
         isProcessing = true;
         log('Starting impersonation...');
+        log('System prompt:', prompts.systemPrompt.substring(0, 200) + '...');
+        log('User prompt:', prompts.userPrompt.substring(0, 200) + '...');
         
         const response = await generateRaw({
             prompt: prompts.userPrompt,
             systemPrompt: prompts.systemPrompt,
-            responseLength: settings.maxTokens > 0 ? settings.maxTokens : undefined,
+            responseLength: settings.currentSettings.maxTokens > 0 ? settings.currentSettings.maxTokens : undefined,
         });
 
         if (!response) {
@@ -278,6 +282,10 @@ async function doImpersonate() {
         error('Impersonation failed:', err);
         toastr.error(`Failed to generate response: ${err.message}`, 'Impersonator');
         return null;
+    } finally {
+        isProcessing = false;
+    }
+}
     } finally {
         isProcessing = false;
     }
@@ -520,6 +528,16 @@ async function impersonateCommand(args, value) {
 
 // Create impersonate button next to send
 function createImpersonateButton() {
+    // Remove existing button if it exists
+    $('#impersonateButton').remove();
+    
+    // Check if the container exists
+    if (!$('#send_but_sheld').length) {
+        warn('Send button container not found, will retry...');
+        setTimeout(createImpersonateButton, 500);
+        return;
+    }
+    
     // SVG icon for impersonate
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
@@ -527,29 +545,35 @@ function createImpersonateButton() {
     </svg>`;
     
     const button = $(`
-        <div id="impersonateButton" class="fa-solid" title="Impersonate (Custom)" style="cursor: pointer;">
+        <div id="impersonateButton" class="fa-solid fa-user-pen" title="Impersonate (Custom)" style="cursor: pointer; padding: 5px; display: flex; align-items: center; justify-content: center;">
             ${svg}
         </div>
     `);
     
-    button.on('click', async function() {
+    button.on('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
         if (!settings.enabled) {
-            toastr.warning('Impersonator is disabled', 'Impersonator');
+            toastr.warning('Impersonator is disabled. Enable it in extension settings.', 'Impersonator');
             return;
         }
         
+        log('Impersonate button clicked');
         const result = await doImpersonate();
         if (result) {
             // Insert into input field
             const textarea = $('#send_textarea');
             textarea.val(result);
             textarea.trigger('input');
+            log('Result inserted into textarea');
         }
     });
     
     // Insert before the send button
     $('#send_but_sheld').prepend(button);
     updateImpersonateButton();
+    log('Impersonate button created and added to UI');
 }
 
 jQuery(async function () {

@@ -29,15 +29,11 @@
 
             <div id="impersonator_config" class="imp--config">
                 <div class="flex-container flexFlowColumn">
-                    <label for="impersonator_system_prompt">
-                        <strong>System Prompt</strong>
-                        <small>(Comprehensive instructions for impersonation)</small>
-                    </label>
-                    <textarea id="impersonator_system_prompt" class="text_pole textarea_compact" rows="8" placeholder="You are {{user}}..."></textarea>
                     
                     <div class="marginTop10">
                         <label for="impersonator_pov">
                             <strong>Point of View</strong>
+                            <small>(Controls {{pov}} in prompt)</small>
                         </label>
                         <select id="impersonator_pov" class="text_pole">
                             <option value="first">First Person (I, me, my)</option>
@@ -49,6 +45,7 @@
                     <div class="marginTop10">
                         <label for="impersonator_response_style">
                             <strong>Response Length</strong>
+                            <small>(Controls {{length}} in prompt)</small>
                         </label>
                         <select id="impersonator_response_style" class="text_pole">
                             <option value="short">Short (1-3 sentences)</option>
@@ -57,6 +54,14 @@
                             <option value="adaptive">Adaptive (match previous style)</option>
                         </select>
                     </div>
+
+                    <hr>
+
+                    <label for="impersonator_system_prompt">
+                        <strong>System Prompt</strong>
+                        <small>(Use {{pov}} and {{length}} as variables)</small>
+                    </label>
+                    <textarea id="impersonator_system_prompt" class="text_pole textarea_compact" rows="12" placeholder="You are {{user}}..."></textarea>
 
                     <div class="marginTop10">
                         <label for="impersonator_context_size">
