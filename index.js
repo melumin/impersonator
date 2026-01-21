@@ -1,9 +1,9 @@
-import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2 } from '../../../script.js';
-import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
-import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
-import { SlashCommand } from '../../slash-commands/SlashCommand.js';
-import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashCommandArgument.js';
-import { isTrueBoolean, download } from '../../utils.js';
+import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2 } from '../../script.js';
+import { extension_settings, getContext, renderExtensionTemplateAsync } from '../extensions.js';
+import { SlashCommandParser } from '../slash-commands/SlashCommandParser.js';
+import { SlashCommand } from '../slash-commands/SlashCommand.js';
+import { ARGUMENT_TYPE, SlashCommandArgument } from '../slash-commands/SlashCommandArgument.js';
+import { isTrueBoolean, download } from '../utils.js';
 
 const MODULE_NAME = 'impersonator';
 const DEBUG = true;
