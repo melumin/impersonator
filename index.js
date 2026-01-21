@@ -1,10 +1,9 @@
-import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, chat_metadata } from '../../../script.js';
-import { extension_settings, getContext, renderExtensionTemplateAsync, saveMetadataDebounced } from '../../extensions.js';
+import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types } from '../../../script.js';
+import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashCommandArgument.js';
 import { isTrueBoolean } from '../../utils.js';
-import { getWorldInfoPrompt } from '../../world-info.js';
 
 const MODULE_NAME = 'impersonator';
 const DEBUG = true;
@@ -21,7 +20,6 @@ const defaultSettings = {
     instruction: '',
     includeCharCard: true,
     includePersona: true,
-    includeWI: false,
 };
 
 const presets = {
@@ -76,7 +74,6 @@ function loadSettings() {
     $('#impersonator_instruction').val(settings.instruction);
     $('#impersonator_include_char_card').prop('checked', settings.includeCharCard);
     $('#impersonator_include_persona').prop('checked', settings.includePersona);
-    $('#impersonator_include_wi').prop('checked', settings.includeWI);
 
     updateConfigVisibility();
     log('Settings loaded:', settings);
@@ -114,19 +111,6 @@ async function buildImpersonationPrompt() {
         if (persona) {
             systemPrompt += `\n\n### Your Persona ({{user}}):\n${persona}`;
             log('Added user persona to prompt');
-        }
-    }
-
-    // Add World Info if enabled
-    if (settings.includeWI) {
-        try {
-            const wiPrompt = await getWorldInfoPrompt();
-            if (wiPrompt) {
-                systemPrompt += `\n\n### World Information:\n${wiPrompt}`;
-                log('Added World Info to prompt');
-            }
-        } catch (err) {
-            warn('Failed to get World Info:', err);
         }
     }
 
@@ -398,11 +382,6 @@ jQuery(async function () {
 
     $('#impersonator_include_persona').on('change', function () {
         settings.includePersona = $(this).prop('checked');
-        saveSettingsDebounced();
-    });
-
-    $('#impersonator_include_wi').on('change', function () {
-        settings.includeWI = $(this).prop('checked');
         saveSettingsDebounced();
     });
 
