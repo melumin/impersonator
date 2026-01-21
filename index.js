@@ -6,6 +6,7 @@ import { ARGUMENT_TYPE, SlashCommandArgument } from '../../../slash-commands/Sla
 import { isTrueBoolean, download } from '../../../utils.js';
 
 const MODULE_NAME = 'impersonator';
+const MODULE_PATH = 'third-party/impersonator';
 const DEBUG = true;
 
 const log = (...args) => DEBUG && console.log('[Impersonator]', ...args);
@@ -624,7 +625,7 @@ function createImpersonateButton() {
 }
 
 jQuery(async function () {
-    const settingsHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'settings');
+    const settingsHtml = await renderExtensionTemplateAsync(MODULE_PATH, 'settings');
     $('#extensions_settings2').append(settingsHtml);
 
     loadSettings();
