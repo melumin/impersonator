@@ -3,7 +3,7 @@ import { extension_settings, getContext, renderExtensionTemplateAsync } from '..
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashCommandArgument.js';
-import { isTrueBoolean } from '../../utils.js';
+import { isTrueBoolean, download } from '../../utils.js';
 
 const MODULE_NAME = 'impersonator';
 const DEBUG = true;
@@ -12,41 +12,92 @@ const log = (...args) => DEBUG && console.log('[Impersonator]', ...args);
 const warn = (...args) => console.warn('[Impersonator]', ...args);
 const error = (...args) => console.error('[Impersonator]', ...args);
 
-const defaultSettings = {
-    enabled: false,
+const defaultPreset = {
+    name: 'Default',
     systemPrompt: 'You are roleplaying as {{user}}. Based on the conversation context and {{user}}\'s personality, continue the dialogue naturally. Stay in character and respond as {{user}} would.',
     contextSize: 10,
     maxTokens: 200,
     instruction: '',
-    includeCharCard: true,
+    includeCharCard: false,
     includePersona: true,
+    pov: 'first', // first, second, third
+    responseStyle: 'medium', // short, medium, long, adaptive
 };
 
-const presets = {
-    default: {
-        systemPrompt: 'You are roleplaying as {{user}}. Based on the conversation context and {{user}}\'s personality, continue the dialogue naturally. Stay in character and respond as {{user}} would.',
+const builtInPresets = {
+    'Default': {
+        name: 'Default',
+        systemPrompt: 'You are {{user}}. Continue the conversation naturally based on the context and your personality. Stay in character.',
         contextSize: 10,
         maxTokens: 200,
-        instruction: '',
+        instruction: 'Write in first person perspective. Match the conversation style.',
+        includeCharCard: false,
+        includePersona: true,
+        pov: 'first',
+        responseStyle: 'medium',
     },
-    concise: {
-        systemPrompt: 'You are {{user}}. Reply briefly and naturally, staying in character. Keep responses short and to the point.',
+    'First Person Short': {
+        name: 'First Person Short',
+        systemPrompt: 'You are {{user}}. Reply briefly in first person, staying in character.',
         contextSize: 5,
         maxTokens: 100,
-        instruction: 'Be concise. Use 1-2 sentences maximum. Focus on immediate reactions.',
+        instruction: 'Use "I" perspective. Keep responses to 1-2 sentences. Be direct and immediate.',
+        includeCharCard: false,
+        includePersona: true,
+        pov: 'first',
+        responseStyle: 'short',
     },
-    detailed: {
-        systemPrompt: 'You are {{user}}. Provide detailed, thoughtful responses that reflect {{user}}\'s personality and the conversation context. Express emotions, thoughts, and reactions fully.',
+    'First Person Detailed': {
+        name: 'First Person Detailed',
+        systemPrompt: 'You are {{user}}. Provide detailed first-person responses that reflect your personality, thoughts, and emotions.',
         contextSize: 15,
         maxTokens: 400,
-        instruction: 'Be descriptive and expressive. Show {{user}}\'s thoughts and feelings. Include internal monologue when appropriate.',
+        instruction: 'Use "I" perspective. Include internal thoughts and feelings. Be descriptive and expressive.',
+        includeCharCard: false,
+        includePersona: true,
+        pov: 'first',
+        responseStyle: 'long',
     },
-    creative: {
-        systemPrompt: 'You are {{user}}. Be creative and expressive in your responses. Use vivid descriptions, metaphors, and show personality through your writing style.',
-        contextSize: 12,
+    'Second Person': {
+        name: 'Second Person',
+        systemPrompt: 'Narrate {{user}}\'s actions and responses in second person perspective.',
+        contextSize: 10,
+        maxTokens: 250,
+        instruction: 'Use "You" perspective. Describe actions and dialogue as if narrating to the reader.',
+        includeCharCard: false,
+        includePersona: true,
+        pov: 'second',
+        responseStyle: 'medium',
+    },
+    'Third Person': {
+        name: 'Third Person',
+        systemPrompt: 'Narrate {{user}}\'s actions and responses in third person perspective.',
+        contextSize: 10,
+        maxTokens: 250,
+        instruction: 'Use "{{user}}" or appropriate pronouns. Describe actions and dialogue from an outside perspective.',
+        includeCharCard: false,
+        includePersona: true,
+        pov: 'third',
+        responseStyle: 'medium',
+    },
+    'Adaptive Context': {
+        name: 'Adaptive Context',
+        systemPrompt: 'You are {{user}}. Analyze the recent conversation and match the style, length, and tone of previous {{user}} messages.',
+        contextSize: 20,
         maxTokens: 300,
-        instruction: 'Be creative and engaging. Use descriptive language. Show personality through unique expressions and reactions.',
+        instruction: 'Adapt to the conversation style. If previous messages were short, be brief. If detailed, be expressive. Match the established pattern.',
+        includeCharCard: false,
+        includePersona: true,
+        pov: 'first',
+        responseStyle: 'adaptive',
     },
+};
+
+const defaultSettings = {
+    enabled: false,
+    activePreset: 'Default',
+    presets: { ...builtInPresets },
+    currentSettings: { ...defaultPreset },
 };
 
 let settings = null;
@@ -54,59 +105,110 @@ let isProcessing = false;
 
 function loadSettings() {
     if (!extension_settings[MODULE_NAME]) {
-        extension_settings[MODULE_NAME] = {};
+        extension_settings[MODULE_NAME] = { ...defaultSettings };
     }
 
+    // Ensure all default settings exist
     Object.keys(defaultSettings).forEach(key => {
         if (extension_settings[MODULE_NAME][key] === undefined) {
             extension_settings[MODULE_NAME][key] = defaultSettings[key];
         }
     });
 
+    // Ensure built-in presets exist
+    if (!extension_settings[MODULE_NAME].presets) {
+        extension_settings[MODULE_NAME].presets = { ...builtInPresets };
+    } else {
+        // Merge built-in presets with existing ones
+        Object.keys(builtInPresets).forEach(key => {
+            if (!extension_settings[MODULE_NAME].presets[key]) {
+                extension_settings[MODULE_NAME].presets[key] = builtInPresets[key];
+            }
+        });
+    }
+
     settings = extension_settings[MODULE_NAME];
 
-    $('#impersonator_enabled').prop('checked', settings.enabled);
-    $('#impersonator_system_prompt').val(settings.systemPrompt);
-    $('#impersonator_context_size').val(settings.contextSize);
-    $('#impersonator_context_size_value').text(settings.contextSize);
-    $('#impersonator_max_tokens').val(settings.maxTokens);
-    $('#impersonator_max_tokens_value').text(settings.maxTokens);
-    $('#impersonator_instruction').val(settings.instruction);
-    $('#impersonator_include_char_card').prop('checked', settings.includeCharCard);
-    $('#impersonator_include_persona').prop('checked', settings.includePersona);
+    // Ensure activePreset is valid
+    if (!settings.activePreset || !settings.presets[settings.activePreset]) {
+        settings.activePreset = 'Default';
+    }
 
-    updateConfigVisibility();
+    // Load current settings from active preset
+    const currentPreset = settings.presets[settings.activePreset];
+    settings.currentSettings = { ...currentPreset };
+
     log('Settings loaded:', settings);
+}
+
+function loadPresetList() {
+    const select = $('#impersonator-preset-list');
+    if (!select.length) {
+        warn('Preset list element not found');
+        return;
+    }
+    
+    select.empty();
+    
+    const presetNames = Object.keys(settings.presets);
+    log('Loading preset list with', presetNames.length, 'presets:', presetNames);
+    
+    presetNames.forEach(name => {
+        select.append($('<option></option>').attr('value', name).text(name));
+    });
+    
+    select.val(settings.activePreset);
+    log('Preset list loaded, active:', settings.activePreset);
+}
+
+function loadCurrentPreset() {
+    const current = settings.currentSettings;
+    
+    $('#impersonator_system_prompt').val(current.systemPrompt || '');
+    $('#impersonator_context_size').val(current.contextSize || 10);
+    $('#impersonator_context_size_value').text(current.contextSize || 10);
+    $('#impersonator_max_tokens').val(current.maxTokens || 200);
+    $('#impersonator_max_tokens_value').text(current.maxTokens || 200);
+    $('#impersonator_instruction').val(current.instruction || '');
+    $('#impersonator_include_char_card').prop('checked', current.includeCharCard === true);
+    $('#impersonator_include_persona').prop('checked', current.includePersona !== false);
+    $('#impersonator_pov').val(current.pov || 'first');
+    $('#impersonator_response_style').val(current.responseStyle || 'medium');
+    
+    log('Loaded preset settings:', current);
 }
 
 function updateConfigVisibility() {
     const enabled = settings.enabled;
     $('#impersonator_config').toggleClass('enabled', enabled);
-    $('#impersonator_status').toggleClass('active', enabled);
+    updateImpersonateButton();
+}
+
+function updateImpersonateButton() {
+    const button = $('#impersonateButton');
+    if (settings.enabled) {
+        button.removeClass('disabled');
+        button.attr('title', 'Impersonate (Custom)');
+    } else {
+        button.addClass('disabled');
+        button.attr('title', 'Impersonator disabled');
+    }
 }
 
 async function buildImpersonationPrompt() {
     const context = getContext();
     const chat = context.chat;
+    const current = settings.currentSettings;
     
     if (!chat || chat.length === 0) {
         warn('No chat context available');
         return null;
     }
 
-    let systemPrompt = substituteParamsExtended(settings.systemPrompt);
+    let systemPrompt = substituteParamsExtended(current.systemPrompt);
     
-    // Add character card if enabled
-    if (settings.includeCharCard && context.characterId !== undefined) {
-        const charData = context.characters[context.characterId];
-        if (charData && charData.description) {
-            systemPrompt += `\n\n### Character Information ({{char}}):\n${charData.description}`;
-            log('Added character card to prompt');
-        }
-    }
-
-    // Add user persona if enabled
-    if (settings.includePersona && context.name1) {
+    // Add user persona FIRST if enabled (prioritize persona)
+    if (current.includePersona !== false) {
         const persona = context.persona || '';
         if (persona) {
             systemPrompt += `\n\n### Your Persona ({{user}}):\n${persona}`;
@@ -114,13 +216,58 @@ async function buildImpersonationPrompt() {
         }
     }
 
-    // Add additional instructions
-    if (settings.instruction) {
-        systemPrompt += `\n\n### Additional Instructions:\n${substituteParamsExtended(settings.instruction)}`;
+    // Add character card ONLY if explicitly enabled
+    if (current.includeCharCard === true && context.characterId !== undefined) {
+        const charData = context.characters[context.characterId];
+        if (charData && charData.description) {
+            systemPrompt += `\n\n### Character Information ({{char}}):\n${charData.description}`;
+            log('Added character card to prompt');
+        }
+    }
+
+    // Add additional instructions based on POV and response style
+    let styleInstructions = '';
+    
+    // POV instructions
+    switch (current.pov) {
+        case 'first':
+            styleInstructions += 'Write in first person perspective using "I". ';
+            break;
+        case 'second':
+            styleInstructions += 'Write in second person perspective using "You". ';
+            break;
+        case 'third':
+            styleInstructions += `Write in third person perspective using "{{user}}" or appropriate pronouns. `;
+            break;
+    }
+    
+    // Response style instructions
+    switch (current.responseStyle) {
+        case 'short':
+            styleInstructions += 'Keep responses brief and concise (1-2 sentences). ';
+            break;
+        case 'medium':
+            styleInstructions += 'Provide moderate length responses. ';
+            break;
+        case 'long':
+            styleInstructions += 'Provide detailed, expressive responses with internal thoughts. ';
+            break;
+        case 'adaptive':
+            styleInstructions += 'Match the length and style of previous {{user}} messages in the conversation. ';
+            break;
+    }
+    
+    // Add custom instructions
+    if (current.instruction) {
+        styleInstructions += substituteParamsExtended(current.instruction);
+    }
+    
+    if (styleInstructions) {
+        systemPrompt += `\n\n### Style Instructions:\n${styleInstructions}`;
     }
 
     // Build context from recent messages
-    const contextSize = Math.min(settings.contextSize, chat.length);
+    const contextSize = Math.min(current.contextSize, chat.length);
     const recentMessages = chat.slice(-contextSize);
     
     const contextMessages = recentMessages
@@ -130,7 +277,7 @@ async function buildImpersonationPrompt() {
 
     const userPrompt = `### Recent Conversation:\n\n${contextMessages}\n\n${context.name1}:`;
 
-    log('Built impersonation prompt with', contextSize, 'messages');
+    log('Built impersonation prompt with', contextSize, 'messages, POV:', current.pov, 'Style:', current.responseStyle);
     return { systemPrompt, userPrompt };
 }
 
@@ -250,79 +397,156 @@ async function testImpersonation() {
     }
 }
 
-function applyPreset(presetName) {
-    const preset = presets[presetName];
+function saveCurrentToPreset() {
+    const presetName = settings.activePreset;
     
-    if (!preset) {
+    settings.currentSettings = {
+        name: presetName,
+        systemPrompt: $('#impersonator_system_prompt').val(),
+        contextSize: Number($('#impersonator_context_size').val()),
+        maxTokens: Number($('#impersonator_max_tokens').val()),
+        instruction: $('#impersonator_instruction').val(),
+        includeCharCard: $('#impersonator_include_char_card').prop('checked'),
+        includePersona: $('#impersonator_include_persona').prop('checked'),
+        pov: $('#impersonator_pov').val() || 'first',
+        responseStyle: $('#impersonator_response_style').val() || 'medium',
+    };
+    
+    settings.presets[presetName] = { ...settings.currentSettings };
+    saveSettingsDebounced();
+    toastr.success(`Saved to preset "${presetName}"`, 'Impersonator');
+    log('Saved preset:', presetName);
+}
+
+function loadPreset(presetName) {
+    if (!settings.presets[presetName]) {
         toastr.error('Preset not found', 'Impersonator');
         return;
     }
-
-    settings.systemPrompt = preset.systemPrompt;
-    settings.contextSize = preset.contextSize;
-    settings.maxTokens = preset.maxTokens;
-    settings.instruction = preset.instruction;
-
-    $('#impersonator_system_prompt').val(preset.systemPrompt);
-    $('#impersonator_context_size').val(preset.contextSize);
-    $('#impersonator_context_size_value').text(preset.contextSize);
-    $('#impersonator_max_tokens').val(preset.maxTokens);
-    $('#impersonator_max_tokens_value').text(preset.maxTokens);
-    $('#impersonator_instruction').val(preset.instruction);
-
+    
+    settings.activePreset = presetName;
+    settings.currentSettings = { ...settings.presets[presetName] };
+    loadCurrentPreset();
     saveSettingsDebounced();
-    toastr.success(`Applied "${presetName}" preset`, 'Impersonator');
-    log('Applied preset:', presetName);
+    log('Loaded preset:', presetName);
 }
 
-function exportSettings() {
+function createNewPreset() {
+    const name = prompt('Enter preset name:');
+    if (!name) return;
+    
+    if (settings.presets[name]) {
+        toastr.error('Preset already exists', 'Impersonator');
+        return;
+    }
+    
+    settings.presets[name] = {
+        name: name,
+        systemPrompt: $('#impersonator_system_prompt').val() || defaultPreset.systemPrompt,
+        contextSize: Number($('#impersonator_context_size').val()) || 10,
+        maxTokens: Number($('#impersonator_max_tokens').val()) || 200,
+        instruction: $('#impersonator_instruction').val() || '',
+        includeCharCard: $('#impersonator_include_char_card').prop('checked'),
+        includePersona: $('#impersonator_include_persona').prop('checked'),
+        pov: $('#impersonator_pov').val() || 'first',
+        responseStyle: $('#impersonator_response_style').val() || 'medium',
+    };
+    
+    settings.activePreset = name;
+    settings.currentSettings = { ...settings.presets[name] };
+    loadPresetList();
+    saveSettingsDebounced();
+    toastr.success(`Created preset "${name}"`, 'Impersonator');
+    log('Created preset:', name);
+}
+
+function deletePreset() {
+    const presetName = settings.activePreset;
+    
+    if (Object.keys(builtInPresets).includes(presetName)) {
+        toastr.error('Cannot delete built-in preset', 'Impersonator');
+        return;
+    }
+    
+    if (!confirm(`Delete preset "${presetName}"?`)) return;
+    
+    delete settings.presets[presetName];
+    settings.activePreset = 'Default';
+    settings.currentSettings = { ...settings.presets['Default'] };
+    loadPresetList();
+    loadCurrentPreset();
+    saveSettingsDebounced();
+    toastr.success(`Deleted preset "${presetName}"`, 'Impersonator');
+    log('Deleted preset:', presetName);
+}
+
+function exportPreset() {
+    const presetName = settings.activePreset;
+    const preset = settings.presets[presetName];
+    
+    if (!preset) {
+        toastr.error('No preset selected', 'Impersonator');
+        return;
+    }
+    
     const exportData = {
         version: '1.0',
-        settings: settings,
+        preset: preset,
         timestamp: new Date().toISOString(),
     };
     
     const dataStr = JSON.stringify(exportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `impersonator-settings-${Date.now()}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const filename = `impersonator-${presetName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.json`;
+    download(dataStr, filename, 'application/json');
     
-    toastr.success('Settings exported successfully', 'Impersonator');
-    log('Settings exported');
+    toastr.success('Preset exported', 'Impersonator');
+    log('Exported preset:', presetName);
 }
 
-function importSettings() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
+function importPreset() {
+    $('#impersonator-preset-importFile').trigger('click');
+}
+
+function handlePresetImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
         try {
-            const text = await file.text();
-            const data = JSON.parse(text);
+            const data = JSON.parse(e.target.result);
             
-            if (!data.settings) {
-                throw new Error('Invalid settings file');
+            if (!data.preset || !data.preset.name) {
+                throw new Error('Invalid preset file');
             }
             
-            Object.assign(settings, data.settings);
-            loadSettings();
+            const preset = data.preset;
+            let presetName = preset.name;
+            
+            // Handle name conflicts
+            if (settings.presets[presetName]) {
+                const newName = prompt(`Preset "${presetName}" already exists. Enter a new name:`, presetName + ' (imported)');
+                if (!newName) return;
+                presetName = newName;
+                preset.name = presetName;
+            }
+            
+            settings.presets[presetName] = preset;
+            settings.activePreset = presetName;
+            settings.currentSettings = { ...preset };
+            loadPresetList();
+            loadCurrentPreset();
             saveSettingsDebounced();
             
-            toastr.success('Settings imported successfully', 'Impersonator');
-            log('Settings imported:', data);
+            toastr.success(`Imported preset "${presetName}"`, 'Impersonator');
+            log('Imported preset:', presetName);
         } catch (err) {
             error('Import failed:', err);
-            toastr.error(`Failed to import settings: ${err.message}`, 'Impersonator');
+            toastr.error(`Failed to import preset: ${err.message}`, 'Impersonator');
         }
     };
-    input.click();
+    reader.readAsText(file);
+    event.target.value = '';
 }
 
 // Slash command handler
@@ -337,11 +561,53 @@ async function impersonateCommand(args, value) {
     return result || '';
 }
 
+// Create impersonate button next to send
+function createImpersonateButton() {
+    // SVG icon for impersonate
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+        <path d="M15 9h6v2h-6z"/>
+    </svg>`;
+    
+    const button = $(`
+        <div id="impersonateButton" class="fa-solid" title="Impersonate (Custom)" style="cursor: pointer;">
+            ${svg}
+        </div>
+    `);
+    
+    button.on('click', async function() {
+        if (!settings.enabled) {
+            toastr.warning('Impersonator is disabled', 'Impersonator');
+            return;
+        }
+        
+        const result = await doImpersonate();
+        if (result) {
+            // Insert into input field
+            const textarea = $('#send_textarea');
+            textarea.val(result);
+            textarea.trigger('input');
+        }
+    });
+    
+    // Insert before the send button
+    $('#send_but_sheld').prepend(button);
+    updateImpersonateButton();
+}
+
 jQuery(async function () {
     const settingsHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'settings');
     $('#extensions_settings2').append(settingsHtml);
 
     loadSettings();
+    
+    // Initialize UI after settings are loaded
+    $('#impersonator_enabled').prop('checked', settings.enabled);
+    loadPresetList();
+    loadCurrentPreset();
+    updateConfigVisibility();
+    
+    createImpersonateButton();
 
     // Event handlers
     $('#impersonator_enabled').on('change', function () {
@@ -351,52 +617,60 @@ jQuery(async function () {
         log('Enabled:', settings.enabled);
     });
 
+    // Preset management
+    $('#impersonator-preset-list').on('change', function() {
+        loadPreset($(this).val());
+    });
+    
+    $('#impersonator-preset-new').on('click', createNewPreset);
+    $('#impersonator-preset-delete').on('click', deletePreset);
+    $('#impersonator-preset-export').on('click', exportPreset);
+    $('#impersonator-preset-import').on('click', importPreset);
+    $('#impersonator-preset-importFile').on('change', handlePresetImport);
+    $('#impersonator_save_preset').on('click', saveCurrentToPreset);
+
+    // Settings inputs
     $('#impersonator_system_prompt').on('input', function () {
-        settings.systemPrompt = $(this).val();
-        saveSettingsDebounced();
+        settings.currentSettings.systemPrompt = $(this).val();
     });
 
     $('#impersonator_context_size').on('input', function () {
         const value = $(this).val();
-        settings.contextSize = Number(value);
+        settings.currentSettings.contextSize = Number(value);
         $('#impersonator_context_size_value').text(value);
-        saveSettingsDebounced();
     });
 
     $('#impersonator_max_tokens').on('input', function () {
         const value = $(this).val();
-        settings.maxTokens = Number(value);
+        settings.currentSettings.maxTokens = Number(value);
         $('#impersonator_max_tokens_value').text(value);
-        saveSettingsDebounced();
     });
 
     $('#impersonator_instruction').on('input', function () {
-        settings.instruction = $(this).val();
-        saveSettingsDebounced();
+        settings.currentSettings.instruction = $(this).val();
     });
 
     $('#impersonator_include_char_card').on('change', function () {
-        settings.includeCharCard = $(this).prop('checked');
-        saveSettingsDebounced();
+        settings.currentSettings.includeCharCard = $(this).prop('checked');
     });
 
     $('#impersonator_include_persona').on('change', function () {
-        settings.includePersona = $(this).prop('checked');
-        saveSettingsDebounced();
+        settings.currentSettings.includePersona = $(this).prop('checked');
+    });
+
+    $('#impersonator_pov').on('change', function () {
+        settings.currentSettings.pov = $(this).val();
+    });
+
+    $('#impersonator_response_style').on('change', function () {
+        settings.currentSettings.responseStyle = $(this).val();
     });
 
     $('#impersonator_test').on('click', testImpersonation);
-    $('#impersonator_export').on('click', exportSettings);
-    $('#impersonator_import').on('click', importSettings);
-
-    $('#impersonator_preset_default').on('click', () => applyPreset('default'));
-    $('#impersonator_preset_concise').on('click', () => applyPreset('concise'));
-    $('#impersonator_preset_detailed').on('click', () => applyPreset('detailed'));
-    $('#impersonator_preset_creative').on('click', () => applyPreset('creative'));
 
     // Register slash command
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'impersonate',
+        name: 'personator',
         callback: impersonateCommand,
         namedArgumentList: [
             SlashCommandArgument.fromProps({
@@ -407,7 +681,6 @@ jQuery(async function () {
             }),
         ],
         helpString: 'Generate a {{user}} response using custom impersonation settings. Use quiet=true to suppress notifications.',
-        aliases: ['imp', 'impers'],
     }));
 
     // Hook into the impersonate event if available
