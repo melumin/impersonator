@@ -14,27 +14,50 @@ const error = (...args) => console.error('[Impersonator]', ...args);
 
 const defaultPreset = {
     name: 'Comprehensive',
-    systemPrompt: `You are {{user}}. Your task is to generate the next message from {{user}}'s perspective in an ongoing roleplay conversation.
+    systemPrompt: `## TASK OVERVIEW
+You are assisting a user who is roleplaying as {{user}} in an interactive narrative. The user wants you to write their next message from {{user}}'s perspective. This is a creative writing exercise where you embody {{user}}'s character completely.
 
-CRITICAL INSTRUCTIONS:
-1. You MUST roleplay as {{user}}, not as {{char}} or any other character
-2. Generate ONLY {{user}}'s next response - do not continue the conversation beyond that
-3. Stay completely in character based on {{user}}'s personality, background, and established traits
-4. Match the tone, style, and energy level of {{user}}'s previous messages
-5. Consider the full context of the conversation and respond appropriately to what {{char}} just said/did
-6. Do not narrate {{char}}'s actions, thoughts, or dialogue - focus solely on {{user}}
+## YOUR ROLE
+You are NOT playing {{char}} or any other character. You are writing AS {{user}}, channeling their voice, personality, and perspective. Think of yourself as {{user}}'s creative writing partner - you're helping them express what their character would say, think, and do in this moment.
 
-WRITING STYLE:
-- Point of View: {{pov}}
-- Response Length: {{length}}
-- Maintain consistency with {{user}}'s established personality, speech patterns, and behavior
-- React naturally to the current situation and {{char}}'s most recent message
-- Include both dialogue and actions/descriptions as appropriate for the scene
-- Show {{user}}'s thoughts, feelings, and internal reactions when relevant
-- Keep the narrative flowing - don't break character or add meta-commentary
-- Respect the established relationship dynamic between {{user}} and {{char}}
+## CONTEXT PROVIDED
+The user may provide a note or idea about what they want the message to convey: {{input}}
 
-Remember: You are continuing an existing story. Read the context carefully and generate a response that feels natural and authentic to {{user}}'s character.`,
+This is guidance about the direction, theme, or content they want in the response. Use it as inspiration and context, but transform it into natural, in-character writing. Don't copy it literally - interpret it through {{user}}'s personality and the current situation.
+
+## CRITICAL REQUIREMENTS
+1. **Character Consistency**: Stay true to {{user}}'s established personality, speech patterns, mannerisms, and behavioral traits
+2. **Single Response Only**: Generate ONLY {{user}}'s next message - do not continue the conversation or write for {{char}}
+3. **Contextual Awareness**: React appropriately to what {{char}} just said or did in their most recent message
+4. **Narrative Continuity**: Maintain the flow and tone established in previous {{user}} messages
+5. **No Meta-Commentary**: Stay in character - no breaking the fourth wall or explaining your choices
+6. **Respect Boundaries**: Never control, narrate, or speak for {{char}} or other characters
+
+## WRITING STYLE PARAMETERS
+- **Point of View**: {{pov}}
+- **Response Length**: {{length}}
+
+## CREATIVE WRITING GUIDELINES
+- **Avoid Clichés**: Write fresh, authentic responses that feel real rather than formulaic
+- **Show, Don't Tell**: Use specific actions, dialogue, and sensory details rather than abstract descriptions
+- **Internal Life**: Include {{user}}'s thoughts, feelings, and reactions when relevant to deepen characterization
+- **Natural Dialogue**: Write conversation that sounds like how real people talk, with personality and subtext
+- **Dynamic Action**: Balance dialogue with physical actions, gestures, and environmental interaction
+- **Emotional Authenticity**: Capture genuine emotional responses appropriate to the situation and character
+- **Subtext and Nuance**: People rarely say exactly what they mean - layer in complexity when appropriate
+- **Pacing**: Match the energy and rhythm of the scene - tense moments feel different from casual ones
+
+## RELATIONSHIP DYNAMICS
+Consider the established relationship between {{user}} and {{char}}:
+- What is their history and current dynamic?
+- What are the power dynamics, emotional connections, or tensions?
+- How does {{user}} typically interact with {{char}}?
+- What's unsaid between them that influences their interactions?
+
+## FINAL REMINDER
+If the user provided context or an idea ({{input}}), use it to guide the message's direction and content. Incorporate the concept naturally into {{user}}'s dialogue, actions, and thoughts - interpret and transform it rather than copying it verbatim.
+
+Now, write {{user}}'s next message.`,
     contextSize: 15,
     maxTokens: 300,
     includeCharCard: false,
@@ -221,19 +244,13 @@ async function buildImpersonationPrompt() {
         })
         .join('\n\n');
 
-    // Check if there's text in the input box
-    const inputText = $('#send_textarea').val()?.trim() || '';
+    // Build user prompt - {{input}} will be replaced by SillyTavern with textarea content
     let userPrompt = `### Recent Conversation:\n\n${contextMessages}`;
     
-    if (inputText) {
-        // If there's input text, treat it as a note/idea for the message
-        userPrompt += `\n\n### Message Idea/Note:\n${inputText}\n\n{{user}}:`;
-        log('Including input text as message idea:', inputText.substring(0, 50) + '...');
-    } else {
-        userPrompt += `\n\n{{user}}:`;
-    }
+    // Add message idea/note section if there's input
+    userPrompt += `\n\n### Message Context/Idea:\nThe following is a note or idea for what the message should convey. Use this as context and inspiration for the response. Incorporate the concept naturally into {{user}}'s dialogue, actions, and thoughts - don't copy it word-for-word, but let it guide the direction and content of the message:\n{{input}}\n\n{{user}}:`;
     
-    // Apply macro substitution to user prompt as well
+    // Apply macro substitution to user prompt (this will replace {{input}} and {{user}})
     userPrompt = substituteParamsExtended(userPrompt);
 
     log('Built impersonation prompt - Context:', contextSize, 'messages | POV:', current.pov, '| Style:', current.responseStyle);
@@ -282,10 +299,6 @@ async function doImpersonate() {
         error('Impersonation failed:', err);
         toastr.error(`Failed to generate response: ${err.message}`, 'Impersonator');
         return null;
-    } finally {
-        isProcessing = false;
-    }
-}
     } finally {
         isProcessing = false;
     }
@@ -531,21 +544,24 @@ function createImpersonateButton() {
     // Remove existing button if it exists
     $('#impersonateButton').remove();
     
-    // Check if the container exists
-    if (!$('#send_but_sheld').length) {
-        warn('Send button container not found, will retry...');
+    // Check if the container exists - try multiple possible locations
+    let container = $('#rightSendForm');
+    if (!container.length) {
+        container = $('#send_form');
+    }
+    if (!container.length) {
+        warn('Send form container not found, will retry...');
         setTimeout(createImpersonateButton, 500);
         return;
     }
     
-    // SVG icon for impersonate
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
-        <path d="M15 9h6v2h-6z"/>
+    // SVG icon for impersonate - compact user icon
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
     </svg>`;
     
     const button = $(`
-        <div id="impersonateButton" class="fa-solid fa-user-pen" title="Impersonate (Custom)" style="cursor: pointer; padding: 5px; display: flex; align-items: center; justify-content: center;">
+        <div id="impersonateButton" class="fa-solid fa-user-pen interactable" title="Impersonate (Custom Extension)" tabindex="0" style="cursor: pointer; display: flex; align-items: center; justify-content: center;">
             ${svg}
         </div>
     `);
@@ -560,18 +576,49 @@ function createImpersonateButton() {
         }
         
         log('Impersonate button clicked');
+        toastr.info('Generating impersonated response...', 'Impersonator');
+        
         const result = await doImpersonate();
+        
         if (result) {
+            log('Got result, length:', result.length);
+            log('Result preview:', result.substring(0, 100));
+            
             // Insert into input field
             const textarea = $('#send_textarea');
-            textarea.val(result);
-            textarea.trigger('input');
-            log('Result inserted into textarea');
+            log('Textarea element found:', textarea.length > 0);
+            
+            if (textarea.length > 0) {
+                textarea.val(result);
+                log('Value set, new value length:', textarea.val().length);
+                
+                // Try multiple ways to trigger update
+                textarea.trigger('input');
+                textarea.trigger('change');
+                textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.focus();
+                
+                toastr.success('Response generated and inserted!', 'Impersonator');
+                log('Result inserted into textarea');
+            } else {
+                error('Textarea not found!');
+                toastr.error('Could not find message input box', 'Impersonator');
+            }
+        } else {
+            log('No result returned from doImpersonate');
         }
     });
     
-    // Insert before the send button
-    $('#send_but_sheld').prepend(button);
+    // Insert into rightSendForm, before the send button
+    const sendButton = $('#send_but');
+    if (sendButton.length > 0) {
+        button.insertBefore(sendButton);
+        log('Impersonate button inserted before send button');
+    } else {
+        container.prepend(button);
+        log('Impersonate button prepended to container');
+    }
+    
     updateImpersonateButton();
     log('Impersonate button created and added to UI');
 }
