@@ -175,7 +175,7 @@ async function fetchAvailableModels() {
 
 function populateModelDropdown(models = availableModels) {
     const select = $('#impersonator_model');
-    const currentValue = select.val();
+    const currentValue = settings.currentSettings.model || '';
     
     select.empty();
     select.append($('<option></option>').attr('value', '').text('Default (use API model)'));
@@ -184,16 +184,16 @@ function populateModelDropdown(models = availableModels) {
         select.append($('<option></option>').attr('value', model).text(model));
     });
     
-    // Restore previous selection if it exists in the new list
-    if (currentValue && models.includes(currentValue)) {
-        select.val(currentValue);
-    } else if (currentValue && currentValue !== '') {
-        // If the previous value doesn't exist in the list, add it as a custom option
+    // If there's a saved model value that's not in the list, add it as custom
+    if (currentValue && currentValue !== '' && !models.includes(currentValue)) {
         select.append($('<option></option>').attr('value', currentValue).text(currentValue + ' (custom)'));
-        select.val(currentValue);
+        log('Added custom model to dropdown:', currentValue);
     }
     
-    log('Model dropdown populated with', models.length, 'models');
+    // Set the current value
+    select.val(currentValue);
+    
+    log('Model dropdown populated with', models.length, 'models, current value:', currentValue);
 }
 
 function loadSettings() {
@@ -260,7 +260,22 @@ function loadCurrentPreset() {
     $('#impersonator_system_prompt').val(current.systemPrompt || '');
     $('#impersonator_context_size').val(current.contextSize || 15);
     $('#impersonator_context_size_value').text(current.contextSize || 15);
-    $('#impersonator_model').val(current.model || '');
+    
+    // Handle model dropdown - ensure the value exists in options
+    const modelSelect = $('#impersonator_model');
+    const modelValue = current.model || '';
+    
+    // Check if the model value exists in the dropdown
+    const modelExists = modelSelect.find(`option[value="${modelValue}"]`).length > 0;
+    
+    if (modelValue && !modelExists) {
+        // Add the custom model to the dropdown
+        modelSelect.append($('<option></option>').attr('value', modelValue).text(modelValue + ' (custom)'));
+        log('Added custom model to dropdown:', modelValue);
+    }
+    
+    modelSelect.val(modelValue);
+    
     $('#impersonator_include_char_card').prop('checked', current.includeCharCard === true);
     $('#impersonator_include_persona').prop('checked', current.includePersona !== false);
     $('#impersonator_pov').val(current.pov || 'first');
