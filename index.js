@@ -184,14 +184,12 @@ function populateModelDropdown(models = availableModels) {
         select.append($('<option></option>').attr('value', model).text(model));
     });
     
-    // If there's a saved model value that's not in the list, add it as custom
-    if (currentValue && currentValue !== '' && !models.includes(currentValue)) {
-        select.append($('<option></option>').attr('value', currentValue).text(currentValue + ' (custom)'));
-        log('Added custom model to dropdown:', currentValue);
+    // Set the current value if it exists in the list
+    if (currentValue && models.includes(currentValue)) {
+        select.val(currentValue);
+    } else {
+        select.val('');
     }
-    
-    // Set the current value
-    select.val(currentValue);
     
     log('Model dropdown populated with', models.length, 'models, current value:', currentValue);
 }
@@ -261,19 +259,9 @@ function loadCurrentPreset() {
     $('#impersonator_context_size').val(current.contextSize || 15);
     $('#impersonator_context_size_value').text(current.contextSize || 15);
     
-    // Handle model dropdown - ensure the value exists in options
+    // Set model dropdown value
     const modelSelect = $('#impersonator_model');
     const modelValue = current.model || '';
-    
-    // Check if the model value exists in the dropdown
-    const modelExists = modelSelect.find(`option[value="${modelValue}"]`).length > 0;
-    
-    if (modelValue && !modelExists) {
-        // Add the custom model to the dropdown
-        modelSelect.append($('<option></option>').attr('value', modelValue).text(modelValue + ' (custom)'));
-        log('Added custom model to dropdown:', modelValue);
-    }
-    
     modelSelect.val(modelValue);
     
     $('#impersonator_include_char_card').prop('checked', current.includeCharCard === true);
@@ -695,14 +683,8 @@ function createImpersonateButton() {
         return;
     }
     
-    // SVG icon for impersonate - compact user icon
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-    </svg>`;
-    
     const button = $(`
-        <div id="impersonateButton" class="fa-solid fa-user-pen interactable" title="Impersonate (Custom Extension)" tabindex="0" style="cursor: pointer; display: flex; align-items: center; justify-content: center;">
-            ${svg}
+        <div id="impersonateButton" class="fa-solid fa-user interactable" title="Impersonate (Custom Extension)" tabindex="0" style="cursor: pointer; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
         </div>
     `);
     
@@ -715,37 +697,53 @@ function createImpersonateButton() {
             return;
         }
         
+        if (isProcessing) {
+            toastr.warning('Already generating...', 'Impersonator');
+            return;
+        }
+        
         log('Impersonate button clicked');
+        
+        // Disable textarea and button while processing
+        const textarea = $('#send_textarea');
+        const wasDisabled = textarea.prop('disabled');
+        textarea.prop('disabled', true);
+        button.addClass('disabled');
+        
         toastr.info('Generating impersonated response...', 'Impersonator');
         
-        const result = await doImpersonate();
-        
-        if (result) {
-            log('Got result, length:', result.length);
-            log('Result preview:', result.substring(0, 100));
+        try {
+            const result = await doImpersonate();
             
-            // Insert into input field
-            const textarea = $('#send_textarea');
-            log('Textarea element found:', textarea.length > 0);
-            
-            if (textarea.length > 0) {
-                textarea.val(result);
-                log('Value set, new value length:', textarea.val().length);
+            if (result) {
+                log('Got result, length:', result.length);
+                log('Result preview:', result.substring(0, 100));
                 
-                // Try multiple ways to trigger update
-                textarea.trigger('input');
-                textarea.trigger('change');
-                textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
-                textarea.focus();
-                
-                toastr.success('Response generated and inserted!', 'Impersonator');
-                log('Result inserted into textarea');
+                if (textarea.length > 0) {
+                    textarea.val(result);
+                    log('Value set, new value length:', textarea.val().length);
+                    
+                    // Try multiple ways to trigger update
+                    textarea.trigger('input');
+                    textarea.trigger('change');
+                    textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
+                    textarea.focus();
+                    
+                    toastr.success('Response generated and inserted!', 'Impersonator');
+                    log('Result inserted into textarea');
+                } else {
+                    error('Textarea not found!');
+                    toastr.error('Could not find message input box', 'Impersonator');
+                }
             } else {
-                error('Textarea not found!');
-                toastr.error('Could not find message input box', 'Impersonator');
+                log('No result returned from doImpersonate');
             }
-        } else {
-            log('No result returned from doImpersonate');
+        } finally {
+            // Re-enable textarea and button
+            if (!wasDisabled) {
+                textarea.prop('disabled', false);
+            }
+            button.removeClass('disabled');
         }
     });
     
