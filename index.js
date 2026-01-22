@@ -60,7 +60,7 @@ If the user provided context or an idea ({{input}}), use it to guide the message
 
 Now, write {{user}}'s next message.`,
     contextSize: 15,
-    maxTokens: 300,
+    model: '',
     includeCharCard: false,
     includePersona: true,
     pov: 'first',
@@ -145,8 +145,7 @@ function loadCurrentPreset() {
     $('#impersonator_system_prompt').val(current.systemPrompt || '');
     $('#impersonator_context_size').val(current.contextSize || 15);
     $('#impersonator_context_size_value').text(current.contextSize || 15);
-    $('#impersonator_max_tokens').val(current.maxTokens || 300);
-    $('#impersonator_max_tokens_value').text(current.maxTokens || 300);
+    $('#impersonator_model').val(current.model || '');
     $('#impersonator_include_char_card').prop('checked', current.includeCharCard === true);
     $('#impersonator_include_persona').prop('checked', current.includePersona !== false);
     $('#impersonator_pov').val(current.pov || 'first');
@@ -284,11 +283,18 @@ async function doImpersonate() {
         log('System prompt:', prompts.systemPrompt.substring(0, 200) + '...');
         log('User prompt:', prompts.userPrompt.substring(0, 200) + '...');
         
-        const response = await generateRaw({
+        const generateOptions = {
             prompt: prompts.userPrompt,
             systemPrompt: prompts.systemPrompt,
-            responseLength: settings.currentSettings.maxTokens > 0 ? settings.currentSettings.maxTokens : undefined,
-        });
+        };
+        
+        // Add model override if specified
+        if (settings.currentSettings.model && settings.currentSettings.model.trim()) {
+            generateOptions.model = settings.currentSettings.model.trim();
+            log('Using model override:', generateOptions.model);
+        }
+        
+        const response = await generateRaw(generateOptions);
 
         if (!response) {
             throw new Error('Empty response received');
@@ -385,7 +391,7 @@ function saveCurrentToPreset() {
         name: presetName,
         systemPrompt: $('#impersonator_system_prompt').val(),
         contextSize: Number($('#impersonator_context_size').val()),
-        maxTokens: Number($('#impersonator_max_tokens').val()),
+        model: $('#impersonator_model').val(),
         includeCharCard: $('#impersonator_include_char_card').prop('checked'),
         includePersona: $('#impersonator_include_persona').prop('checked'),
         pov: $('#impersonator_pov').val() || 'first',
@@ -424,7 +430,7 @@ function createNewPreset() {
         name: name,
         systemPrompt: $('#impersonator_system_prompt').val() || defaultPreset.systemPrompt,
         contextSize: Number($('#impersonator_context_size').val()) || 15,
-        maxTokens: Number($('#impersonator_max_tokens').val()) || 300,
+        model: $('#impersonator_model').val() || '',
         includeCharCard: $('#impersonator_include_char_card').prop('checked'),
         includePersona: $('#impersonator_include_persona').prop('checked'),
         pov: $('#impersonator_pov').val() || 'first',
@@ -663,16 +669,14 @@ jQuery(async function () {
         settings.currentSettings.systemPrompt = $(this).val();
     });
 
+    $('#impersonator_model').on('input', function () {
+        settings.currentSettings.model = $(this).val();
+    });
+
     $('#impersonator_context_size').on('input', function () {
         const value = $(this).val();
         settings.currentSettings.contextSize = Number(value);
         $('#impersonator_context_size_value').text(value);
-    });
-
-    $('#impersonator_max_tokens').on('input', function () {
-        const value = $(this).val();
-        settings.currentSettings.maxTokens = Number(value);
-        $('#impersonator_max_tokens_value').text(value);
     });
 
     $('#impersonator_include_char_card').on('change', function () {

@@ -31,6 +31,14 @@
                 <div class="flex-container flexFlowColumn">
                     
                     <div class="marginTop10">
+                        <label for="impersonator_model">
+                            <strong>Model Override</strong>
+                            <small>(Leave empty to use default API model)</small>
+                        </label>
+                        <input type="text" id="impersonator_model" class="text_pole" placeholder="e.g., gpt-4, claude-3-opus, etc.">
+                    </div>
+
+                    <div class="marginTop10">
                         <label for="impersonator_pov">
                             <strong>Point of View</strong>
                             <small>(Controls {{pov}} in prompt)</small>
