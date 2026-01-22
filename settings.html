@@ -35,7 +35,14 @@
                             <strong>Model Override</strong>
                             <small>(Leave empty to use default API model)</small>
                         </label>
-                        <input type="text" id="impersonator_model" class="text_pole" placeholder="e.g., gpt-4, claude-3-opus, etc.">
+                        <div class="flex-container flexGap5 alignItemsCenter">
+                            <select id="impersonator_model" class="text_pole flex1">
+                                <option value="">Default (use API model)</option>
+                            </select>
+                            <div id="impersonator_refresh_models" class="menu_button menu_button_icon" title="Refresh model list from current API">
+                                <i class="fa-solid fa-sync"></i>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="marginTop10">
@@ -79,17 +86,6 @@
                         <div class="flex-container alignItemsCenter">
                             <input id="impersonator_context_size" type="range" min="5" max="30" step="1" value="15" class="flex1">
                             <span id="impersonator_context_size_value" class="range-block-counter">15</span>
-                        </div>
-                    </div>
-
-                    <div class="marginTop10">
-                        <label for="impersonator_max_tokens">
-                            <strong>Max Response Length</strong>
-                            <small>(0 = use default)</small>
-                        </label>
-                        <div class="flex-container alignItemsCenter">
-                            <input id="impersonator_max_tokens" type="range" min="0" max="1000" step="50" value="300" class="flex1">
-                            <span id="impersonator_max_tokens_value" class="range-block-counter">300</span>
                         </div>
                     </div>
 
