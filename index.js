@@ -416,6 +416,7 @@ async function doImpersonate() {
         const generateOptions = {
             prompt: prompts.userPrompt,
             systemPrompt: prompts.systemPrompt,
+            responseLength: 0, // Use default/unlimited
         };
         
         // Add model override if specified (not empty string)
