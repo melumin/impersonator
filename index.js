@@ -1,9 +1,10 @@
-import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2 } from '../../../../script.js';
+import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2, main_api, getRequestHeaders } from '../../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { isTrueBoolean, download } from '../../../utils.js';
+import { oai_settings } from '../../../openai.js';
 
 const MODULE_NAME = 'impersonator';
 const MODULE_PATH = 'third-party/impersonator';
@@ -80,6 +81,120 @@ const defaultSettings = {
 
 let settings = null;
 let isProcessing = false;
+let availableModels = [];
+
+async function fetchAvailableModels() {
+    try {
+        log('Fetching models for API:', main_api);
+        
+        // Try to get models based on current API
+        let models = [];
+        
+        switch (main_api) {
+            case 'openai':
+            case 'custom':
+                // OpenAI and custom OpenAI-compatible APIs
+                if (oai_settings && oai_settings.openai_model) {
+                    // Get the current model as a fallback
+                    models.push(oai_settings.openai_model);
+                }
+                // Try to fetch from the API if available
+                try {
+                    const response = await fetch('/api/openai/models', {
+                        method: 'POST',
+                        headers: getRequestHeaders(),
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (Array.isArray(data)) {
+                            models = data.map(m => typeof m === 'string' ? m : m.id || m.name);
+                        }
+                    }
+                } catch (e) {
+                    log('Could not fetch OpenAI models:', e);
+                }
+                break;
+                
+            case 'claude':
+                // Claude models - use known list
+                models = [
+                    'claude-3-5-sonnet-20241022',
+                    'claude-3-5-sonnet-20240620',
+                    'claude-3-5-haiku-20241022',
+                    'claude-3-opus-20240229',
+                    'claude-3-sonnet-20240229',
+                    'claude-3-haiku-20240307',
+                ];
+                break;
+                
+            case 'openrouter':
+                // Try to fetch OpenRouter models
+                try {
+                    const response = await fetch('/api/openrouter/models', {
+                        method: 'POST',
+                        headers: getRequestHeaders({ omitContentType: true }),
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (Array.isArray(data)) {
+                            models = data.map(m => m.id || m.name || m);
+                        }
+                    }
+                } catch (e) {
+                    log('Could not fetch OpenRouter models:', e);
+                }
+                break;
+                
+            case 'kobold':
+            case 'koboldhorde':
+            case 'textgenerationwebui':
+                // These typically don't have model lists or use a single model
+                models = ['Current Model'];
+                break;
+                
+            default:
+                log('Unknown API type:', main_api);
+                models = ['Current Model'];
+        }
+        
+        // Remove duplicates and sort
+        models = [...new Set(models)].filter(m => m).sort();
+        
+        if (models.length === 0) {
+            models = ['Current Model'];
+        }
+        
+        availableModels = models;
+        log('Fetched models:', models);
+        return models;
+    } catch (err) {
+        error('Failed to fetch models:', err);
+        return ['Current Model'];
+    }
+}
+
+function populateModelDropdown(models = availableModels) {
+    const select = $('#impersonator_model');
+    const currentValue = select.val();
+    
+    select.empty();
+    select.append($('<option></option>').attr('value', '').text('Default (use API model)'));
+    
+    models.forEach(model => {
+        select.append($('<option></option>').attr('value', model).text(model));
+    });
+    
+    // Restore previous selection if it exists in the new list
+    if (currentValue && models.includes(currentValue)) {
+        select.val(currentValue);
+    } else if (currentValue && currentValue !== '') {
+        // If the previous value doesn't exist in the list, add it as a custom option
+        select.append($('<option></option>').attr('value', currentValue).text(currentValue + ' (custom)'));
+        select.val(currentValue);
+    }
+    
+    log('Model dropdown populated with', models.length, 'models');
+}
 
 function loadSettings() {
     if (!extension_settings[MODULE_NAME]) {
@@ -288,10 +403,12 @@ async function doImpersonate() {
             systemPrompt: prompts.systemPrompt,
         };
         
-        // Add model override if specified
-        if (settings.currentSettings.model && settings.currentSettings.model.trim()) {
+        // Add model override if specified (not empty string)
+        if (settings.currentSettings.model && settings.currentSettings.model.trim() !== '') {
             generateOptions.model = settings.currentSettings.model.trim();
             log('Using model override:', generateOptions.model);
+        } else {
+            log('Using default API model');
         }
         
         const response = await generateRaw(generateOptions);
@@ -642,6 +759,10 @@ jQuery(async function () {
     loadCurrentPreset();
     updateConfigVisibility();
     
+    // Fetch and populate models
+    const models = await fetchAvailableModels();
+    populateModelDropdown(models);
+    
     createImpersonateButton();
 
     // Event handlers
@@ -663,13 +784,23 @@ jQuery(async function () {
     $('#impersonator-preset-import').on('click', importPreset);
     $('#impersonator-preset-importFile').on('change', handlePresetImport);
     $('#impersonator_save_preset').on('click', saveCurrentToPreset);
+    
+    // Model refresh button
+    $('#impersonator_refresh_models').on('click', async function() {
+        $(this).addClass('fa-spin');
+        toastr.info('Fetching models from current API...', 'Impersonator');
+        const models = await fetchAvailableModels();
+        populateModelDropdown(models);
+        $(this).removeClass('fa-spin');
+        toastr.success(`Found ${models.length} model(s)`, 'Impersonator');
+    });
 
     // Settings inputs
     $('#impersonator_system_prompt').on('input', function () {
         settings.currentSettings.systemPrompt = $(this).val();
     });
 
-    $('#impersonator_model').on('input', function () {
+    $('#impersonator_model').on('change', function () {
         settings.currentSettings.model = $(this).val();
     });
 
