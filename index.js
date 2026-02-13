@@ -479,6 +479,15 @@ function cancelImpersonation() {
         // Emit the GENERATION_STOPPED event to stop generation
         eventSource.emit(event_types.GENERATION_STOPPED);
         
+        // Immediately clean up UI state
+        isProcessing = false;
+        abortController = null;
+        updateImpersonateButtonState('idle');
+        
+        // Re-enable textarea
+        const textarea = $('#send_textarea');
+        textarea.prop('disabled', false);
+        
         toastr.info('Generation cancelled', 'Impersonator');
     }
 }
