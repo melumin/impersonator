@@ -82,6 +82,7 @@ const defaultSettings = {
 let settings = null;
 let isProcessing = false;
 let availableModels = [];
+let abortController = null;
 
 async function fetchAvailableModels() {
     try {
@@ -289,6 +290,25 @@ function updateImpersonateButton() {
     }
 }
 
+function updateImpersonateButtonState(state) {
+    const button = $('#impersonateButton');
+    const icon = button.find('i');
+    
+    switch (state) {
+        case 'generating':
+            button.addClass('imp--generating');
+            icon.removeClass('fa-user').addClass('fa-spinner fa-spin');
+            button.attr('title', 'Click to cancel generation');
+            break;
+        case 'idle':
+        default:
+            button.removeClass('imp--generating');
+            icon.removeClass('fa-spinner fa-spin').addClass('fa-user');
+            button.attr('title', settings.enabled ? 'Impersonate (Custom)' : 'Impersonator disabled');
+            break;
+    }
+}
+
 async function buildImpersonationPrompt() {
     const context = getContext();
     const chat = context.chat;
@@ -397,6 +417,12 @@ async function doImpersonate() {
 
     try {
         isProcessing = true;
+        abortController = new AbortController();
+        
+        // Update button to show cancel state
+        updateImpersonateButtonState('generating');
+        showGeneratingIndicator();
+        
         log('Starting impersonation...');
         log('System prompt:', prompts.systemPrompt.substring(0, 200) + '...');
         log('User prompt:', prompts.userPrompt.substring(0, 200) + '...');
@@ -405,6 +431,7 @@ async function doImpersonate() {
             prompt: prompts.userPrompt,
             systemPrompt: prompts.systemPrompt,
             responseLength: 0, // Use default/unlimited
+            signal: abortController.signal,
         };
         
         // Add model override if specified (not empty string)
@@ -424,11 +451,27 @@ async function doImpersonate() {
         log('Impersonation successful, length:', response.length);
         return response.trim();
     } catch (err) {
+        if (err.name === 'AbortError' || err.message?.includes('abort')) {
+            log('Impersonation cancelled by user');
+            toastr.info('Generation cancelled', 'Impersonator');
+            return null;
+        }
         error('Impersonation failed:', err);
         toastr.error(`Failed to generate response: ${err.message}`, 'Impersonator');
         return null;
     } finally {
         isProcessing = false;
+        abortController = null;
+        updateImpersonateButtonState('idle');
+        hideGeneratingIndicator();
+    }
+}
+
+function cancelImpersonation() {
+    if (isProcessing && abortController) {
+        log('Cancelling impersonation...');
+        abortController.abort();
+        toastr.info('Cancelling generation...', 'Impersonator');
     }
 }
 
@@ -470,27 +513,6 @@ async function testImpersonation() {
             </div>
         `;
         
-        // Add styles
-        const style = document.createElement('style');
-        style.textContent = `
-            .imp--test-popup { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; }
-            .imp--test-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
-            .imp--test-content { position: relative; background: var(--SmartThemeBlurTintColor); border: 2px solid var(--SmartThemeBorderColor); border-radius: 12px; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.5); animation: imp--slideIn 0.3s ease; }
-            @keyframes imp--slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-            .imp--test-header { display: flex; align-items: center; justify-content: space-between; padding: 1.5em; border-bottom: 2px solid var(--SmartThemeBorderColor); }
-            .imp--test-header h3 { margin: 0; display: flex; align-items: center; gap: 0.5em; color: var(--SmartThemeQuoteColor); }
-            .imp--test-close { background: none; border: none; color: var(--grey70); cursor: pointer; font-size: 1.5em; padding: 0; transition: color 0.2s; }
-            .imp--test-close:hover { color: var(--SmartThemeBodyColor); }
-            .imp--test-body { padding: 1.5em; overflow-y: auto; flex: 1; }
-            .imp--test-label { font-weight: 600; margin-bottom: 0.75em; color: var(--SmartThemeBodyColor); }
-            .imp--test-result { background: var(--black30alpha); padding: 1em; border-radius: 8px; border-left: 3px solid var(--SmartThemeQuoteColor); font-family: var(--mainFontFamily); line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
-            .imp--test-stats { display: flex; gap: 1.5em; margin-top: 1em; font-size: 0.9em; color: var(--grey70); }
-            .imp--test-stats span { display: flex; align-items: center; gap: 0.5em; }
-            .imp--test-footer { display: flex; gap: 0.75em; padding: 1.5em; border-top: 2px solid var(--SmartThemeBorderColor); }
-            .imp--test-footer button { flex: 1; }
-        `;
-        popup.appendChild(style);
-        
         document.body.appendChild(popup);
         
         const closePopup = () => document.body.removeChild(popup);
@@ -503,6 +525,17 @@ async function testImpersonation() {
             toastr.success('Copied to clipboard!', 'Impersonator');
         });
     }
+}
+
+function showGeneratingIndicator() {
+    if ($('#imp--progress-bar').length) return;
+    
+    const progressBar = $('<div id="imp--progress-bar" class="imp--generating-overlay"></div>');
+    $('body').append(progressBar);
+}
+
+function hideGeneratingIndicator() {
+    $('#imp--progress-bar').remove();
 }
 
 function saveCurrentToPreset() {
@@ -534,8 +567,34 @@ function loadPreset(presetName) {
     settings.activePreset = presetName;
     settings.currentSettings = { ...settings.presets[presetName] };
     loadCurrentPreset();
+    updateQuickPresets();
     saveSettingsDebounced();
     log('Loaded preset:', presetName);
+}
+
+function updateQuickPresets() {
+    const container = $('#impersonator-quick-presets');
+    if (!container.length) return;
+    
+    container.empty();
+    
+    const presetNames = Object.keys(settings.presets);
+    presetNames.forEach(name => {
+        const pill = $(`<div class="imp--preset-pill" data-preset="${name}">${name}</div>`);
+        
+        if (name === settings.activePreset) {
+            pill.addClass('active');
+        }
+        
+        pill.on('click', function() {
+            loadPreset(name);
+            toastr.success(`Switched to "${name}"`, 'Impersonator');
+        });
+        
+        container.append(pill);
+    });
+    
+    log('Quick presets updated');
 }
 
 function createNewPreset() {
@@ -561,6 +620,7 @@ function createNewPreset() {
     settings.activePreset = name;
     settings.currentSettings = { ...settings.presets[name] };
     loadPresetList();
+    updateQuickPresets();
     saveSettingsDebounced();
     toastr.success(`Created preset "${name}"`, 'Impersonator');
     log('Created preset:', name);
@@ -577,10 +637,11 @@ function deletePreset() {
     if (!confirm(`Delete preset "${presetName}"?`)) return;
     
     delete settings.presets[presetName];
-    settings.activePreset = 'Default';
-    settings.currentSettings = { ...settings.presets['Default'] };
+    settings.activePreset = 'Comprehensive';
+    settings.currentSettings = { ...settings.presets['Comprehensive'] };
     loadPresetList();
     loadCurrentPreset();
+    updateQuickPresets();
     saveSettingsDebounced();
     toastr.success(`Deleted preset "${presetName}"`, 'Impersonator');
     log('Deleted preset:', presetName);
@@ -642,6 +703,7 @@ function handlePresetImport(event) {
             settings.currentSettings = { ...preset };
             loadPresetList();
             loadCurrentPreset();
+            updateQuickPresets();
             saveSettingsDebounced();
             
             toastr.success(`Imported preset "${presetName}"`, 'Impersonator');
@@ -684,7 +746,8 @@ function createImpersonateButton() {
     }
     
     const button = $(`
-        <div id="impersonateButton" class="fa-solid fa-user interactable" title="Impersonate (Custom Extension)" tabindex="0" style="cursor: pointer; display: flex; align-items: center; justify-content: center; margin-right: 10px;">
+        <div id="impersonateButton" class="imp--button interactable" title="Impersonate (Custom Extension)" tabindex="0">
+            <i class="fa-solid fa-user"></i>
         </div>
     `);
     
@@ -692,23 +755,23 @@ function createImpersonateButton() {
         e.preventDefault();
         e.stopPropagation();
         
+        // If generating, cancel instead
+        if (isProcessing) {
+            cancelImpersonation();
+            return;
+        }
+        
         if (!settings.enabled) {
             toastr.warning('Impersonator is disabled. Enable it in extension settings.', 'Impersonator');
             return;
         }
         
-        if (isProcessing) {
-            toastr.warning('Already generating...', 'Impersonator');
-            return;
-        }
-        
         log('Impersonate button clicked');
         
-        // Disable textarea and button while processing
+        // Disable textarea while processing
         const textarea = $('#send_textarea');
         const wasDisabled = textarea.prop('disabled');
         textarea.prop('disabled', true);
-        button.addClass('disabled');
         
         toastr.info('Generating impersonated response...', 'Impersonator');
         
@@ -739,11 +802,10 @@ function createImpersonateButton() {
                 log('No result returned from doImpersonate');
             }
         } finally {
-            // Re-enable textarea and button
+            // Re-enable textarea
             if (!wasDisabled) {
                 textarea.prop('disabled', false);
             }
-            button.removeClass('disabled');
         }
     });
     
@@ -772,12 +834,32 @@ jQuery(async function () {
     loadPresetList();
     loadCurrentPreset();
     updateConfigVisibility();
+    updateQuickPresets();
     
     // Fetch and populate models
     const models = await fetchAvailableModels();
     populateModelDropdown(models);
     
     createImpersonateButton();
+
+    // Keyboard shortcut: Ctrl+Shift+I
+    $(document).on('keydown', function(e) {
+        // Ctrl+Shift+I (or Cmd+Shift+I on Mac)
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
+            e.preventDefault();
+            
+            if (!settings.enabled) {
+                toastr.warning('Impersonator is disabled', 'Impersonator');
+                return;
+            }
+            
+            if (isProcessing) {
+                cancelImpersonation();
+            } else {
+                $('#impersonateButton').trigger('click');
+            }
+        }
+    });
 
     // Event handlers
     $('#impersonator_enabled').on('change', function () {
