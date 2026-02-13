@@ -144,11 +144,13 @@
     background: var(--SmartThemeQuoteColor);
     border-color: var(--SmartThemeQuoteColor);
     animation: imp--pulse 2s ease-in-out infinite;
+    cursor: pointer;
 }
 
 .imp--button.imp--generating:hover {
     background: var(--crimson70);
     border-color: var(--crimson70);
+    transform: translateY(-1px);
 }
 
 @keyframes imp--pulse {

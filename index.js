@@ -1,4 +1,4 @@
-import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2, main_api, getRequestHeaders } from '../../../../script.js';
+import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2, main_api, getRequestHeaders, is_send_press } from '../../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
@@ -297,12 +297,14 @@ function updateImpersonateButtonState(state) {
     switch (state) {
         case 'generating':
             button.addClass('imp--generating');
+            button.attr('disabled', false); // Keep enabled for cancellation
             icon.removeClass('fa-user').addClass('fa-spinner fa-spin');
             button.attr('title', 'Click to cancel generation');
             break;
         case 'idle':
         default:
             button.removeClass('imp--generating');
+            button.attr('disabled', false);
             icon.removeClass('fa-spinner fa-spin').addClass('fa-user');
             button.attr('title', settings.enabled ? 'Impersonate (Custom)' : 'Impersonator disabled');
             break;
@@ -399,7 +401,7 @@ async function buildImpersonationPrompt() {
 
 async function doImpersonate() {
     if (isProcessing) {
-        toastr.warning('Impersonation already in progress', 'Impersonator');
+        toastr.warning('Impersonation already in progress. Please wait for it to complete.', 'Impersonator');
         return null;
     }
 
@@ -417,9 +419,9 @@ async function doImpersonate() {
 
     try {
         isProcessing = true;
-        abortController = new AbortController();
+        abortController = { cancelled: false };
         
-        // Update button to show cancel state
+        // Update button to show generating state
         updateImpersonateButtonState('generating');
         showGeneratingIndicator();
         
@@ -431,7 +433,6 @@ async function doImpersonate() {
             prompt: prompts.userPrompt,
             systemPrompt: prompts.systemPrompt,
             responseLength: 0, // Use default/unlimited
-            signal: abortController.signal,
         };
         
         // Add model override if specified (not empty string)
@@ -444,6 +445,12 @@ async function doImpersonate() {
         
         const response = await generateRaw(generateOptions);
 
+        // Check if cancelled during generation
+        if (abortController.cancelled) {
+            log('Generation was cancelled');
+            return null;
+        }
+
         if (!response) {
             throw new Error('Empty response received');
         }
@@ -451,9 +458,8 @@ async function doImpersonate() {
         log('Impersonation successful, length:', response.length);
         return response.trim();
     } catch (err) {
-        if (err.name === 'AbortError' || err.message?.includes('abort')) {
+        if (abortController && abortController.cancelled) {
             log('Impersonation cancelled by user');
-            toastr.info('Generation cancelled', 'Impersonator');
             return null;
         }
         error('Impersonation failed:', err);
@@ -470,7 +476,13 @@ async function doImpersonate() {
 function cancelImpersonation() {
     if (isProcessing && abortController) {
         log('Cancelling impersonation...');
-        abortController.abort();
+        abortController.cancelled = true;
+        
+        // Set SillyTavern's global flag to stop generation
+        if (typeof is_send_press !== 'undefined') {
+            window.is_send_press = false;
+        }
+        
         toastr.info('Cancelling generation...', 'Impersonator');
     }
 }
@@ -798,6 +810,8 @@ function createImpersonateButton() {
                     error('Textarea not found!');
                     toastr.error('Could not find message input box', 'Impersonator');
                 }
+            } else if (abortController && abortController.cancelled) {
+                toastr.info('Generation cancelled', 'Impersonator');
             } else {
                 log('No result returned from doImpersonate');
             }

@@ -8,5 +8,5 @@
     "author": "melumin",
     "version": "1.1.0",
     "homePage": "https://github.com/melumin/impersonator",
-    "description": "Custom impersonation prompt for {{user}} messages with configurable presets, quick switching, keyboard shortcuts, and cancellable generation"
+    "description": "Custom impersonation prompt for {{user}} messages with configurable presets, quick switching, and keyboard shortcuts"
 }
