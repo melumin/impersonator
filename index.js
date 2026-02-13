@@ -1,4 +1,4 @@
-import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2, main_api, getRequestHeaders, is_send_press } from '../../../../script.js';
+import { saveSettingsDebounced, substituteParamsExtended, generateRaw, eventSource, event_types, name2, main_api, getRequestHeaders } from '../../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
@@ -423,7 +423,6 @@ async function doImpersonate() {
         
         // Update button to show generating state
         updateImpersonateButtonState('generating');
-        showGeneratingIndicator();
         
         log('Starting impersonation...');
         log('System prompt:', prompts.systemPrompt.substring(0, 200) + '...');
@@ -469,7 +468,6 @@ async function doImpersonate() {
         isProcessing = false;
         abortController = null;
         updateImpersonateButtonState('idle');
-        hideGeneratingIndicator();
     }
 }
 
@@ -478,12 +476,10 @@ function cancelImpersonation() {
         log('Cancelling impersonation...');
         abortController.cancelled = true;
         
-        // Set SillyTavern's global flag to stop generation
-        if (typeof is_send_press !== 'undefined') {
-            window.is_send_press = false;
-        }
+        // Emit the GENERATION_STOPPED event to stop generation
+        eventSource.emit(event_types.GENERATION_STOPPED);
         
-        toastr.info('Cancelling generation...', 'Impersonator');
+        toastr.info('Generation cancelled', 'Impersonator');
     }
 }
 
@@ -537,17 +533,6 @@ async function testImpersonation() {
             toastr.success('Copied to clipboard!', 'Impersonator');
         });
     }
-}
-
-function showGeneratingIndicator() {
-    if ($('#imp--progress-bar').length) return;
-    
-    const progressBar = $('<div id="imp--progress-bar" class="imp--generating-overlay"></div>');
-    $('body').append(progressBar);
-}
-
-function hideGeneratingIndicator() {
-    $('#imp--progress-bar').remove();
 }
 
 function saveCurrentToPreset() {
