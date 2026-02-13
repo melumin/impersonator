@@ -444,8 +444,8 @@ async function doImpersonate() {
         
         const response = await generateRaw(generateOptions);
 
-        // Check if cancelled during generation
-        if (abortController.cancelled) {
+        // Check if cancelled during generation (check for null first)
+        if (!abortController || abortController.cancelled) {
             log('Generation was cancelled');
             return null;
         }
@@ -465,9 +465,12 @@ async function doImpersonate() {
         toastr.error(`Failed to generate response: ${err.message}`, 'Impersonator');
         return null;
     } finally {
-        isProcessing = false;
-        abortController = null;
-        updateImpersonateButtonState('idle');
+        // Only clean up if not already cleaned up by cancel
+        if (isProcessing) {
+            isProcessing = false;
+            abortController = null;
+            updateImpersonateButtonState('idle');
+        }
     }
 }
 
